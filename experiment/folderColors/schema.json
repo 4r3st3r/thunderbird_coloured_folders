@@ -1,0 +1,28 @@
+[
+  {
+    "namespace": "folderColors",
+    "functions": [
+      {
+        "name": "applyColors",
+        "type": "function",
+        "description": "Push the full explicit colour map to every open folder pane and (re)install the observers needed to keep rows coloured correctly as the user scrolls, switches tabs, or opens new windows.",
+        "async": true,
+        "parameters": [
+          {
+            "name": "colors",
+            "type": "object",
+            "description": "Map of \"accountId path\" -> \"#rrggbb\", as produced by shared.js folderKey().",
+            "additionalProperties": { "type": "string" }
+          }
+        ]
+      },
+      {
+        "name": "clear",
+        "type": "function",
+        "description": "Remove all injected styling and observers from every open window (used on disable/uninstall shutdown).",
+        "async": true,
+        "parameters": []
+      }
+    ]
+  }
+]

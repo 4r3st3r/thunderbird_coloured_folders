@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Coloured Folders",
+  "version": "1.0.0",
+  "description": "Colour the background of folders (and their subfolders) in the folder pane, so you can spot the one you want at a glance while scrolling.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "coloured-folders@forrester.org.uk",
+      "strict_min_version": "115.0"
+    }
+  },
+  "icons": {
+    "48": "icons/icon-48.svg",
+    "96": "icons/icon-96.svg"
+  },
+  "background": {
+    "scripts": ["shared.js", "background.js"]
+  },
+  "permissions": ["storage", "menus", "accountsRead"],
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "experiment_apis": {
+    "folderColors": {
+      "schema": "experiment/folderColors/schema.json",
+      "parent": {
+        "scopes": ["addon_parent"],
+        "paths": [["folderColors"]],
+        "script": "experiment/folderColors/implementation.js"
+      }
+    }
+  }
+}
