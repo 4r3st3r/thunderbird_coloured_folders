@@ -19,15 +19,53 @@ var { Services } = ChromeUtils.importESModule(
 // than a public API, so it is the most likely thing to need a small fix
 // after a future Thunderbird update.
 //
-// If folders stop getting coloured: open the Browser Toolbox (Tools >
-// Developer Tools > Browser Toolbox, needs devtools.chrome.enabled +
-// devtools.debugger.remote-enabled set in about:config), inspect a row
-// in the folder pane, and update ROW_SELECTOR / getRowFolderURI() below
-// to match whatever changed.
+// If folders stop getting coloured: open the Browser Console (Ctrl+Shift+J)
+// — NOT the extension's own background-page console — reload the add-on,
+// and look for "[Coloured Folders]" lines. They report which selector (if
+// any) matched, and dump a sample row's outerHTML so the right selector
+// can be read off directly instead of guessed at.
 // ---------------------------------------------------------------------
-const ROW_SELECTOR = 'li[is="folder-tree-row"]';
-const STYLE_ID = "coloured-folders-injected-style";
-const ROW_CLASS = "coloured-folder-row";
+const LOG = (...args) => console.log("[Coloured Folders]", ...args);
+const LOG_ERR = (...args) => console.error("[Coloured Folders]", ...args);
+
+// Tried in order; first one that matches anything under a document wins.
+const TREE_SELECTORS = [
+  '[is="folder-tree"]',
+  "#folderTree",
+  "tree-view-table#folderTree",
+  "tree-view-table",
+];
+// Tried in order per tree; first one that matches anything wins.
+const ROW_SELECTORS = [
+  'li[is="folder-tree-row"]',
+  '[is="folder-tree-row"]',
+  "tr.folder-tree-row",
+  ".folder-tree-row",
+];
+
+let resolvedRowSelector = null;
+
+function findRowsIn(tree) {
+  if (resolvedRowSelector) {
+    const rows = tree.querySelectorAll(resolvedRowSelector);
+    if (rows.length) {
+      return rows;
+    }
+  }
+  for (const selector of ROW_SELECTORS) {
+    const rows = tree.querySelectorAll(selector);
+    if (rows.length) {
+      if (selector !== resolvedRowSelector) {
+        LOG(`row selector "${selector}" matched ${rows.length} row(s), using it`);
+        resolvedRowSelector = selector;
+      }
+      return rows;
+    }
+  }
+  return [];
+}
+
+let loggedNoRowsOnce = false;
 
 function getRowFolderURI(row) {
   try {
@@ -55,8 +93,15 @@ function getRowFolderURI(row) {
         return folder.URI;
       }
     }
+    if (!loggedNoRowsOnce) {
+      loggedNoRowsOnce = true;
+      LOG_ERR(
+        "could not find a folder URI for a row via any known property; row markup was:",
+        row.outerHTML && row.outerHTML.slice(0, 500)
+      );
+    }
   } catch (ex) {
-    console.error("Coloured Folders: could not read folder for a row", ex);
+    LOG_ERR("could not read folder for a row", ex);
   }
   return null;
 }
@@ -79,28 +124,56 @@ function readableTextColor(hex) {
   return luminance > 0.6 ? "#000000" : "#ffffff";
 }
 
+let resolvedTreeSelector = null;
+let loggedDocScan = false;
+
 // Recursively find every folder-tree root in a window: the main folder
 // pane usually lives in a content document loaded into a <browser>
 // (about:3pane), so we search the chrome document and descend into any
 // browsers we find, rather than assuming one specific location.
-function findFolderTrees(doc, out = [], seen = new Set()) {
+function findFolderTrees(doc, out = [], seen = new Set(), depth = 0) {
   if (!doc || seen.has(doc)) {
     return out;
   }
   seen.add(doc);
   try {
-    const direct = doc.querySelectorAll('[is="folder-tree"], #folderTree');
-    for (const el of direct) {
-      out.push(el);
+    let found = false;
+    if (resolvedTreeSelector) {
+      const direct = doc.querySelectorAll(resolvedTreeSelector);
+      if (direct.length) {
+        for (const el of direct) out.push(el);
+        found = true;
+      }
+    }
+    if (!found) {
+      for (const selector of TREE_SELECTORS) {
+        const direct = doc.querySelectorAll(selector);
+        if (direct.length) {
+          LOG(
+            `tree selector "${selector}" matched ${direct.length} element(s) in`,
+            doc.location && doc.location.href
+          );
+          resolvedTreeSelector = selector;
+          for (const el of direct) out.push(el);
+          break;
+        }
+      }
     }
     const browsers = doc.querySelectorAll("browser");
     for (const browser of browsers) {
       if (browser.contentDocument) {
-        findFolderTrees(browser.contentDocument, out, seen);
+        findFolderTrees(browser.contentDocument, out, seen, depth + 1);
       }
     }
   } catch (ex) {
     // Cross-origin or not-yet-loaded browsers throw; ignore and move on.
+    LOG("findFolderTrees: skipped a document", ex && ex.message);
+  }
+  if (depth === 0 && !loggedDocScan) {
+    loggedDocScan = true;
+    LOG(
+      `initial scan of window done: found ${out.length} folder-tree root(s), searched ${seen.size} document(s)`
+    );
   }
   return out;
 }
@@ -122,8 +195,10 @@ class WindowController {
 
   scan() {
     const trees = findFolderTrees(this.win.document);
+    let added = 0;
     for (const tree of trees) {
       if (!this.observers.has(tree)) {
+        added++;
         this.injectStyle(tree.ownerDocument);
         const observer = new tree.ownerGlobal.MutationObserver(() =>
           this.scheduleRepaint()
@@ -131,6 +206,9 @@ class WindowController {
         observer.observe(tree, { childList: true, subtree: true, attributes: true });
         this.observers.set(tree, observer);
       }
+    }
+    if (added) {
+      LOG(`scan: now observing ${this.observers.size} folder-tree root(s) in this window (+${added})`);
     }
     this.scheduleRepaint();
   }
@@ -141,11 +219,14 @@ class WindowController {
     }
     const style = doc.createElement("style");
     style.id = STYLE_ID;
+    // Class-based only (not tag/attribute-specific) so this keeps working
+    // regardless of which candidate in ROW_SELECTORS actually matched.
     style.textContent = `
-      ${ROW_SELECTOR}.${ROW_CLASS}:not([selected]) {
+      .${ROW_CLASS}:not([selected]) {
         background-color: var(--coloured-folders-bg);
       }
-      ${ROW_SELECTOR}.${ROW_CLASS}:not([selected]) .container .name {
+      .${ROW_CLASS}:not([selected]) .container .name,
+      .${ROW_CLASS}:not([selected]) .name {
         color: var(--coloured-folders-fg);
       }
     `;
@@ -164,12 +245,18 @@ class WindowController {
   }
 
   repaint() {
+    let rowCount = 0;
+    let uriCount = 0;
+    let colorCount = 0;
     for (const tree of this.observers.keys()) {
-      const rows = tree.querySelectorAll(ROW_SELECTOR);
+      const rows = findRowsIn(tree);
+      rowCount += rows.length;
       for (const row of rows) {
         const uri = getRowFolderURI(row);
+        if (uri) uriCount++;
         const color = uri && currentColors.get(uri);
         if (color) {
+          colorCount++;
           row.classList.add(ROW_CLASS);
           row.style.setProperty("--coloured-folders-bg", color.bg);
           row.style.setProperty("--coloured-folders-fg", color.fg);
@@ -179,6 +266,12 @@ class WindowController {
           row.style.removeProperty("--coloured-folders-fg");
         }
       }
+    }
+    if (!this._loggedRepaintOnce || rowCount === 0) {
+      this._loggedRepaintOnce = true;
+      LOG(
+        `repaint: ${this.observers.size} tree(s), ${rowCount} row(s) found, ${uriCount} resolved a folder URI, ${colorCount} matched a stored colour (currentColors has ${currentColors.size} entries)`
+      );
     }
   }
 
@@ -254,6 +347,7 @@ this.folderColors = class extends ExtensionCommon.ExtensionAPI {
     return {
       folderColors: {
         async applyColors(colors) {
+          LOG(`applyColors: ${Object.keys(colors).length} explicit entr(y/ies) in storage`);
           const next = new Map();
           // Sort shallowest-path-first so a deeper explicit colour always
           // overwrites what a shallower ancestor's cascade set for it.
@@ -268,15 +362,19 @@ this.folderColors = class extends ExtensionCommon.ExtensionAPI {
             try {
               folder = context.extension.folderManager.get(accountId, path);
             } catch (ex) {
-              console.warn(
-                `Coloured Folders: folder ${accountId} ${path} not found (renamed/deleted?)`,
+              LOG_ERR(
+                `folder ${accountId} ${path} not found (renamed/deleted?)`,
                 ex
               );
               continue;
             }
             if (!folder) {
+              LOG_ERR(
+                `folderManager.get(${accountId}, ${path}) returned nothing`
+              );
               continue;
             }
+            LOG(`resolved ${accountId} ${path} -> ${folder.URI}, colour ${hex}`);
             const value = { bg: hex, fg: readableTextColor(hex) };
             next.set(folder.URI, value);
             for (const sub of collectDescendants(folder)) {
@@ -284,14 +382,17 @@ this.folderColors = class extends ExtensionCommon.ExtensionAPI {
             }
           }
           currentColors = next;
+          LOG(`applyColors: resolved to ${next.size} URI(s) needing colour`);
           registerWindowListenerOnce();
           // Make sure any already-open windows get picked up even if they
           // loaded before applyColors() was first called.
           for (const win of Services.wm.getEnumerator("mail:3pane")) {
             if (!windowControllers.has(win)) {
+              LOG("applyColors: found an already-open mail:3pane window, attaching");
               windowControllers.set(win, new WindowController(win));
             }
           }
+          LOG(`applyColors: ${windowControllers.size} window(s) tracked`);
           repaintAllWindows();
         },
 
