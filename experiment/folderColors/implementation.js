@@ -6,9 +6,9 @@ var { ExtensionCommon } = ChromeUtils.importESModule(
 var { ExtensionSupport } = ChromeUtils.importESModule(
   "resource:///modules/ExtensionSupport.sys.mjs"
 );
-var { Services } = ChromeUtils.importESModule(
-  "resource://gre/modules/Services.sys.mjs"
-);
+// Services is already a built-in global in this privileged scope (there is
+// no standalone module file to import it from) — importing it was invalid
+// and crashed this whole script before any of the code below ever ran.
 
 // ---------------------------------------------------------------------
 // Folder-pane DOM assumptions
