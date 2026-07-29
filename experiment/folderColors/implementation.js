@@ -206,7 +206,12 @@ class WindowController {
       if (!this.observers.has(tree)) {
         added++;
         this.injectStyle(tree.ownerDocument);
-        const observer = new tree.ownerGlobal.MutationObserver(() =>
+        // Use the top-level window's MutationObserver rather than the
+        // matched element's own ownerGlobal: for elements found inside a
+        // <browser>'s content document, ownerGlobal isn't reliably set,
+        // but a MutationObserver doesn't need to come from the same
+        // window as the node it observes.
+        const observer = new this.win.MutationObserver(() =>
           this.scheduleRepaint()
         );
         observer.observe(tree, { childList: true, subtree: true, attributes: true });
