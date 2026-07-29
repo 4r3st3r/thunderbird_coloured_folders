@@ -1,14 +1,14 @@
 // Presets shown directly in the right-click menu. Emoji act as a quick
 // colour swatch without needing a set of icon image files.
 const PRESETS = [
-  { hex: "#e53935", label: "🔴 Red" },
-  { hex: "#fb8c00", label: "🟠 Orange" },
-  { hex: "#fdd835", label: "🟡 Yellow" },
-  { hex: "#43a047", label: "🟢 Green" },
-  { hex: "#1e88e5", label: "🔵 Blue" },
-  { hex: "#8e24aa", label: "🟣 Purple" },
-  { hex: "#6d4c41", label: "🟤 Brown" },
-  { hex: "#757575", label: "⚫ Grey" },
+  { hex: "#ffcdd2", label: "🔴 Red" },
+  { hex: "#ffe0b2", label: "🟠 Orange" },
+  { hex: "#fff9c4", label: "🟡 Yellow" },
+  { hex: "#c8e6c9", label: "🟢 Green" },
+  { hex: "#bbdefb", label: "🔵 Blue" },
+  { hex: "#e1bee7", label: "🟣 Purple" },
+  { hex: "#d7ccc8", label: "🟤 Brown" },
+  { hex: "#e0e0e0", label: "⚫ Grey" },
 ];
 
 async function loadColors() {

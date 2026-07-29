@@ -84,6 +84,46 @@ The linter also simply doesn't know about Thunderbird-only APIs like
 `folders`, `accounts`, and `accountsRead`, hence the `UNSUPPORTED_API`
 warnings on standard Thunderbird API calls.
 
+## Publishing to addons.thunderbird.net
+
+To get this signed and installable permanently (not just as a temporary
+add-on), it needs to go through Mozilla's Developer Hub:
+
+1. **Sign in** at https://addons.thunderbird.net/developers/ with a Mozilla
+   account (the same account system as addons.mozilla.org / Firefox
+   Accounts — create one if needed).
+2. **Choose listed vs. unlisted** when submitting:
+   - *Listed*: public, searchable on ATN, gets a full review.
+   - *Unlisted*: not published/searchable, but still reviewed and signed —
+     this is the option if you just want a signed `.xpi` for yourself/a
+     few people rather than a public listing.
+   Either way, Thunderbird refuses to permanently install an unsigned
+   add-on on release builds, so signing via one of these two routes is
+   required regardless of whether you want it public.
+3. **Build the `.xpi`**: `npx web-ext build --source-dir . --artifacts-dir dist`
+   (see Packaging below), then upload that file.
+4. **Because this extension ships an Experiment API** (the privileged
+   `experiment/folderColors/` piece), Mozilla's review is manual rather
+   than fully automated, and reviewers will look at exactly what that
+   privileged code does — this is normal for Thunderbird (unlike Firefox,
+   Thunderbird explicitly supports experiments for third-party add-ons),
+   but expect the review to take longer than a plain WebExtension, and
+   possibly a round of reviewer questions. Since nothing here is minified
+   or built from another source (it's plain, readable JS), there's no
+   separate "source code" submission step to worry about — what you
+   upload *is* the source.
+5. **Fill in the listing**: summary, description, support URL (link to
+   this repo), a licence (this repo now has an MIT `LICENSE` file), and a
+   data-collection declaration — answer "no data is collected", which is
+   accurate (see the privacy notes above).
+6. **Keep the `browser_specific_settings.gecko.id`** in `manifest.json`
+   stable (`coloured-folders@forrester.org.uk`) across versions — that's
+   what lets Thunderbird treat future uploads as updates to the same
+   add-on rather than a new one.
+7. For future changes: bump `version` in `manifest.json`, rebuild the
+   `.xpi`, and upload it as a new version of the same listing — it goes
+   through review again each time.
+
 ## Packaging
 
 ```sh
