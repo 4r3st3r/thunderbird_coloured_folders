@@ -26,8 +26,8 @@ override.
 
 Not yet listed on addons.thunderbird.net. In the meantime:
 
-1. Download the latest `.xpi` from this repository's
-   [Releases](../../releases), or clone the repo.
+1. Download the latest `.xpi` from [`releases/`](releases), or clone the
+   repo.
 2. In Thunderbird: **Tools → Developer Tools → Debug Add-ons**, then
    **Load Temporary Add-on…** and select the extension's `manifest.json`
    (or the `.xpi`, if installing permanently once signed).
