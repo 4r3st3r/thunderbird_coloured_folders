@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Coloured Folders",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Colour the background of folders (and their subfolders) in the folder pane, so you can spot the one you want at a glance while scrolling.",
   "browser_specific_settings": {
     "gecko": {
       "id": "{9fc6e5f9-2922-4a95-a214-2ddcc53db262}",
-      "strict_min_version": "115.0",
+      "strict_min_version": "128.0",
       "strict_max_version": "153.*"
     }
   },
