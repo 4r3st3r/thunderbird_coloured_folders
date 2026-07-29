@@ -92,3 +92,19 @@ Produces a `.xpi` in `dist/`.
    updates to the same add-on rather than a new one.
 7. For future changes: bump `version` in `manifest.json`, rebuild the
    `.xpi`, and upload it as a new version of the same listing.
+
+### `strict_max_version` is mandatory here
+
+Because this extension ships an Experiment API, ATN's validator requires
+both `strict_min_version` *and* `strict_max_version` under
+`browser_specific_settings.gecko` in `manifest.json` — omitting
+`strict_max_version` fails validation outright ("A 'strict_max_version'
+is required for Thunderbird Mail Experiments"). This isn't a formality:
+experiments hook into undocumented internals (the folder-pane DOM) that
+can change between versions, so Thunderbird wants an explicit ceiling
+you've actually verified, rather than an open-ended claim of support for
+versions you haven't tested. Keep it set to the newest version you've
+confirmed still works (currently `153.*`), and bump it — a small
+manifest edit, rebuild, and "upload new version" — each time you verify
+compatibility with a newer release. Resist the temptation to set it far
+ahead "just in case"; that defeats the point of the check.
