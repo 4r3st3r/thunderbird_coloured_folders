@@ -184,11 +184,21 @@ function findFolderTrees(doc, out = [], seen = new Set(), depth = 0) {
   return out;
 }
 
+// On a real application startup (as opposed to reloading a temporary
+// add-on into an already-idle window), the folder pane's content can
+// still be loading when applyColors() first runs. Retry a few times
+// with backoff rather than giving up after a single scan that finds
+// nothing — TabOpen/TabSwitchDone may never fire again after startup
+// if the user doesn't open another tab, so there'd otherwise be no
+// second chance to attach.
+const STARTUP_RETRY_DELAYS_MS = [250, 500, 1000, 2000, 4000, 8000];
+
 class WindowController {
   constructor(win) {
     this.win = win;
     this.observers = new Map(); // tree element -> MutationObserver
     this.repaintScheduled = false;
+    this.startupRetries = 0;
     this.scan();
 
     this.onTabOpen = () => this.scan();
@@ -200,6 +210,9 @@ class WindowController {
   }
 
   scan() {
+    if (this.destroyed) {
+      return;
+    }
     const trees = findFolderTrees(this.win.document);
     let added = 0;
     for (const tree of trees) {
@@ -217,6 +230,12 @@ class WindowController {
         observer.observe(tree, { childList: true, subtree: true, attributes: true });
         this.observers.set(tree, observer);
       }
+    }
+    if (this.observers.size === 0 && this.startupRetries < STARTUP_RETRY_DELAYS_MS.length) {
+      const delay = STARTUP_RETRY_DELAYS_MS[this.startupRetries];
+      this.startupRetries++;
+      LOG(`scan: no folder-tree root found yet, retrying in ${delay}ms (attempt ${this.startupRetries})`);
+      this.win.setTimeout(() => this.scan(), delay);
     }
     if (added) {
       LOG(`scan: now observing ${this.observers.size} folder-tree root(s) in this window (+${added})`);
@@ -287,6 +306,7 @@ class WindowController {
   }
 
   destroy() {
+    this.destroyed = true;
     for (const observer of this.observers.values()) {
       observer.disconnect();
     }
