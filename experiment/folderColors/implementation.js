@@ -185,23 +185,21 @@ function findFolderTrees(doc, out = [], seen = new Set(), depth = 0) {
 }
 
 // On a real application startup (as opposed to reloading a temporary
-// add-on into an already-idle window), the folder pane's content can
-// still be loading when applyColors() first runs. Retry a few times
-// with backoff rather than giving up after a single scan that finds
-// nothing — TabOpen/TabSwitchDone may never fire again after startup
-// if the user doesn't open another tab, so there'd otherwise be no
-// second chance to attach.
-const STARTUP_RETRY_DELAYS_MS = [250, 500, 1000, 2000, 4000, 8000];
+// add-on into an already-idle window), or when a new tab is opened, the
+// relevant folder-pane content can still be loading when we go looking
+// for it. Retry a few times with backoff rather than giving up after a
+// single scan that finds nothing new.
+const RETRY_DELAYS_MS = [250, 500, 1000, 2000, 4000, 8000];
 
 class WindowController {
   constructor(win) {
     this.win = win;
     this.observers = new Map(); // tree element -> MutationObserver
     this.repaintScheduled = false;
-    this.startupRetries = 0;
-    this.scan();
+    this.destroyed = false;
+    this.scanWithRetries();
 
-    this.onTabOpen = () => this.scan();
+    this.onTabOpen = () => this.scanWithRetries();
     const tabmail = win.document.getElementById("tabmail");
     if (tabmail) {
       tabmail.addEventListener("TabOpen", this.onTabOpen);
@@ -209,9 +207,28 @@ class WindowController {
     }
   }
 
-  scan() {
+  // Each call site (initial construction, or a TabOpen/TabSwitchDone
+  // event) gets its own fresh retry budget — unlike a single counter
+  // shared for the controller's whole lifetime, this means a second or
+  // third tab whose content is still loading gets the same chance to be
+  // found as the very first one did, instead of being silently skipped
+  // just because some other tree was already attached earlier.
+  scanWithRetries(attempt = 0) {
     if (this.destroyed) {
       return;
+    }
+    const added = this.scan();
+    if (added === 0 && attempt < RETRY_DELAYS_MS.length) {
+      const delay = RETRY_DELAYS_MS[attempt];
+      LOG(`scan: nothing new found, retrying in ${delay}ms (attempt ${attempt + 1})`);
+      this.win.setTimeout(() => this.scanWithRetries(attempt + 1), delay);
+    }
+  }
+
+  // Returns how many new folder-tree roots were found and attached.
+  scan() {
+    if (this.destroyed) {
+      return 0;
     }
     const trees = findFolderTrees(this.win.document);
     let added = 0;
@@ -231,16 +248,11 @@ class WindowController {
         this.observers.set(tree, observer);
       }
     }
-    if (this.observers.size === 0 && this.startupRetries < STARTUP_RETRY_DELAYS_MS.length) {
-      const delay = STARTUP_RETRY_DELAYS_MS[this.startupRetries];
-      this.startupRetries++;
-      LOG(`scan: no folder-tree root found yet, retrying in ${delay}ms (attempt ${this.startupRetries})`);
-      this.win.setTimeout(() => this.scan(), delay);
-    }
     if (added) {
       LOG(`scan: now observing ${this.observers.size} folder-tree root(s) in this window (+${added})`);
     }
     this.scheduleRepaint();
+    return added;
   }
 
   injectStyle(doc) {
