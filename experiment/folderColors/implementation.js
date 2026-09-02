@@ -71,7 +71,12 @@ function findRowsIn(tree) {
   return [];
 }
 
-let loggedNoRowsOnce = false;
+// Cap rather than a single one-shot flag: a lone early failure (e.g. one
+// odd row at startup) shouldn't silence this for every later, possibly
+// unrelated, failure — such as rows in a second tab that behave
+// differently from the first tab's.
+let noUriLoggedCount = 0;
+const MAX_NO_URI_LOGS = 8;
 
 function getRowFolderURI(row) {
   try {
@@ -99,10 +104,10 @@ function getRowFolderURI(row) {
         return folder.URI;
       }
     }
-    if (!loggedNoRowsOnce) {
-      loggedNoRowsOnce = true;
+    if (noUriLoggedCount < MAX_NO_URI_LOGS) {
+      noUriLoggedCount++;
       LOG_ERR(
-        "could not find a folder URI for a row via any known property; row markup was:",
+        `could not find a folder URI for a row via any known property (doc: ${row.ownerDocument && row.ownerDocument.location && row.ownerDocument.location.href}); row markup was:`,
         row.outerHTML && row.outerHTML.slice(0, 500)
       );
     }
@@ -287,12 +292,19 @@ class WindowController {
   }
 
   repaint() {
-    let rowCount = 0;
-    let uriCount = 0;
-    let colorCount = 0;
+    // Logged per-tree (not just a window-wide total) and for the first
+    // several calls regardless of outcome, rather than only ever once —
+    // this is what lets a second tab's tree be compared directly against
+    // the first tab's in the console, instead of one aggregate number
+    // that hides which specific tree is failing.
+    this._repaintLogCount = (this._repaintLogCount || 0) + 1;
+    const shouldLog = this._repaintLogCount <= 20;
+    let treeIndex = 0;
     for (const tree of this.observers.keys()) {
+      treeIndex++;
       const rows = findRowsIn(tree);
-      rowCount += rows.length;
+      let uriCount = 0;
+      let colorCount = 0;
       for (const row of rows) {
         const uri = getRowFolderURI(row);
         if (uri) uriCount++;
@@ -308,12 +320,11 @@ class WindowController {
           row.style.removeProperty("--coloured-folders-fg");
         }
       }
-    }
-    if (!this._loggedRepaintOnce || rowCount === 0) {
-      this._loggedRepaintOnce = true;
-      LOG(
-        `repaint: ${this.observers.size} tree(s), ${rowCount} row(s) found, ${uriCount} resolved a folder URI, ${colorCount} matched a stored colour (currentColors has ${currentColors.size} entries)`
-      );
+      if (shouldLog || rows.length === 0 || uriCount < rows.length) {
+        LOG(
+          `repaint: tree #${treeIndex} in ${tree.ownerDocument.location && tree.ownerDocument.location.href} — ${rows.length} row(s), ${uriCount} resolved a folder URI, ${colorCount} matched a stored colour (currentColors has ${currentColors.size} entries)`
+        );
+      }
     }
   }
 
